@@ -3,7 +3,7 @@
 
 | NPM Downloads | GitHub Stars | License |
 | :--- | :--- | :--- |
-| [![npm downloads badge]](https://www.npmjs.com/package/react-native-draggable-order-list) | [![GitHub stars badge]](https://github.com/your-username/react-native-draggable-order-list) | [![MIT License badge]](LICENSE) |
+| [![npm downloads badge]](https://www.npmjs.com/package/react-native-draggable-order-list) | [![GitHub stars badge]](https://github.com/Fadion1996/react-native-draggable-order-list) | [![MIT License badge]](LICENSE) |
 
 ## ✨ Why Choose react-native-draggable-order-list?
 
@@ -15,7 +15,7 @@ This library eliminates the performance bottleneck common in other solutions by 
 
 ## 📦 Installation
 
-This library requires `react-native-reanimated` (v2+) and `react-native-gesture-handler`.
+This library requires `react-native-reanimated` (v4+) and `react-native-gesture-handler`.
 
 ```bash
 npm install react-native-draggable-order-list react-native-reanimated react-native-gesture-handler react-native-worklets
