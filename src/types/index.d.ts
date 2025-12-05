@@ -1,5 +1,3 @@
-// /src/types/index.ts
-
 import { SharedValue } from 'react-native-reanimated';
 
 /**

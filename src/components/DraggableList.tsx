@@ -1,5 +1,3 @@
-// /src/components/DraggableList.tsx
-
 import React, { useCallback, useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import { ViewStyle, StyleSheet } from 'react-native';
 import Animated, {

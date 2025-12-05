@@ -1,5 +1,3 @@
-// /src/components/DraggableItem.tsx
-
 import React, { useCallback, useState, useRef, useLayoutEffect } from 'react';
 import { StyleSheet } from 'react-native';
 import Animated, {
@@ -40,7 +38,7 @@ export interface DraggableItemProps<T extends TItem> {
  * * ARCHITECTURE CORE: All drag and movement calculations run on the **Native UI Thread**
  * using Reanimated's SharedValues and useAnimatedReaction for superior performance.
  */
-function DraggableItem<T extends TItem>({
+function DraggableItem<T extends { id: string | number }>({
   item,
   index,
   renderItem,
@@ -57,68 +55,69 @@ function DraggableItem<T extends TItem>({
   startAutoScroll,
   stopAutoScroll,
 }: DraggableItemProps<T>) {
-  // Local JS state for rendering visual changes (e.g., shadows)
   const [isDragging, setIsDragging] = useState(false);
 
-  // Shared values used for UI Thread animations
   const translateY = useSharedValue(0);
   const isDraggingShared = useSharedValue(false);
   const itemKey = String(item.id);
+  const targetPosition = useSharedValue(index); // Track the target position for snapping
 
-  // useLayoutEffect is critical: Resets the item's Y-translation *before* paint
-  // if its logical index changes, preventing visual 'jumps' when data updates.
+  // Track previous index to detect layout updates
+  const prevIndex = useRef(index);
+
+  // useLayoutEffect ensures this runs synchronously after the DOM/layout update but before paint
   useLayoutEffect(() => {
-    // If we detect a new index, snap the translateY back to 0 immediately
-    if (translateY.value !== 0) {
-      translateY.value = 0;
+    if (prevIndex.current !== index) {
+      translateY.value = 0
+      targetPosition.value = index;
+
+      prevIndex.current = index;
     }
   }, [index]);
 
-  // onLayout: Updates the item's height in a SharedValue map (THeights)
   const onLayout = useCallback((e: any) => {
     const height = e.nativeEvent.layout.height;
     if (height > 0) {
-      itemHeights.modify((value: THeights) => {
-        'worklet'; // Ensure this runs on the UI thread
+      itemHeights.modify((value: any) => {
+        'worklet';
         value[itemKey] = height;
         return value;
       });
     }
   }, [itemKey]);
 
-  // useAnimatedReaction: Sibling movement handler (UI THREAD)
+  // React to position changes for synchronized movement
   useAnimatedReaction(() => {
-    // Returns the data required for UI thread calculation
     return {
       targetPosition: positions.value[itemKey],
       isDragging: draggableItemKey.value !== null,
       activeKey: draggableItemKey.value,
       currentIndex: index,
-      itemHeight: itemHeights.value[itemKey] || 0
     };
   },
-    (current) => {
+    (current, previous) => {
       // Don't animate the item being dragged
       if (current.activeKey === itemKey && current.isDragging) return;
 
       const currentTargetPos = current.targetPosition;
 
-      // If position changed while dragging another item, calculate offset
+      // If position changed while dragging another item, move synchronously
       if (
         current.isDragging &&
         current.activeKey &&
-        currentTargetPos !== undefined
+        currentTargetPos !== undefined &&
+        currentTargetPos !== current.currentIndex
       ) {
-        // Calculate the necessary offset based on the height of this item
-        const offset = (currentTargetPos - current.currentIndex) * current.itemHeight;
+        // Calculate offset based on the dragged item's height
+        const offset = (currentTargetPos - current.currentIndex) * itemHeights.value[itemKey];
 
-        // Animate to position with high stiffness/damping for a tight snap
+        // Snap to position with quick spring animation
         translateY.value = withSpring(offset, {
           damping: 700,
           stiffness: 1400,
         });
-      } else {
-        // Snap back to original spot if not being dragged
+      } else if (current.isDragging && currentTargetPos === current.currentIndex) {
+        // Snap back to original spot
         translateY.value = withSpring(0, {
           damping: 700,
           stiffness: 1400,
@@ -128,7 +127,6 @@ function DraggableItem<T extends TItem>({
     [index]
   );
 
-  // Shared values to track drag start state
   const initialScrollY = useSharedValue(0);
   const initialIndex = useSharedValue(index);
   const initialItemOffset = useSharedValue(0);
@@ -138,21 +136,26 @@ function DraggableItem<T extends TItem>({
     .onStart(() => {
       draggableItemKey.value = itemKey;
       initialScrollY.value = scrollY.value;
-      initialIndex.value = positions.value[itemKey] ?? index;
+      const currentPos = positions.value[itemKey] ?? index;
+      initialIndex.value = currentPos;
+      targetPosition.value = currentPos;
 
-      // Calculate initial Y offset for accurate drag tracking (worklet required)
       if (itemHeights.value[itemKey] === 0) return;
+
+      // Calculate initial layout Y offset
       let y = 0;
       const keys = Object.keys(positions.value);
       for (const key of keys) {
-        if (positions.value[key] < initialIndex.value) {
+        if (positions.value[key] < currentPos) {
           y += itemHeights.value[key] || 0;
         }
       }
       initialItemOffset.value = y;
+      initialLayoutOffset.value = y - translateY.value;
 
       isDraggingShared.value = true;
-      scheduleOnRN(setIsDragging, true); // Update JS state
+      scheduleOnRN(setIsDragging, true);
+
       if (onDragStart) {
         scheduleOnRN(onDragStart, index);
       }
@@ -167,61 +170,102 @@ function DraggableItem<T extends TItem>({
       // Calculate absolute Y position of the dragged item
       const currentAbsoluteY = initialItemOffset.value + compensatedTranslation;
 
-      // --- Auto-Scroll Logic Check (UI THREAD) ---
+      // Auto-scroll zones (top and bottom of visible area)
       const scrollZone = 100;
       const topThreshold = scrollZone;
       const bottomThreshold = containerHeight.value - (scrollZone * 2);
-      const visualY = currentAbsoluteY - scrollY.value; // Position relative to viewport
 
       const previousDirection = autoScrollDirection.value;
-      let newDirection: TAutoScrollDirection = 'stop';
+
+      // Determine scroll direction based on position
+      // Use visual position relative to scroll
+      const visualY = currentAbsoluteY - scrollY.value;
 
       if (visualY < topThreshold) {
-        newDirection = 'up';
+        autoScrollDirection.value = 'up';
+        if (previousDirection !== 'up') {
+          scheduleOnRN(startAutoScroll, 'up');
+        }
       } else if (visualY > bottomThreshold) {
-        newDirection = 'down';
-      }
-
-      if (previousDirection !== newDirection) {
-        autoScrollDirection.value = newDirection;
-        if (newDirection === 'up' || newDirection === 'down') {
-          scheduleOnRN(startAutoScroll, newDirection);
-        } else {
+        autoScrollDirection.value = 'down';
+        if (previousDirection !== 'down') {
+          scheduleOnRN(startAutoScroll, 'down');
+        }
+      } else {
+        if (previousDirection !== 'stop') {
+          autoScrollDirection.value = 'stop';
           scheduleOnRN(stopAutoScroll);
         }
       }
 
-      // --- Index Swap Logic (UI THREAD) ---
-      // This complex logic uses variable item heights to calculate the correct new position (newPos)
+      // Calculate which position this item should occupy based on variable heights
       const keys = Object.keys(positions.value);
-      // ... (Your existing index swap logic)
+      const sortedItems = [];
+      for (const key of keys) {
+        if (key !== draggableItemKey.value) {
+          sortedItems.push({
+            key,
+            index: positions.value[key],
+            height: itemHeights.value[key] || 0
+          });
+        }
+      }
+      sortedItems.sort((a, b) => a.index - b.index);
 
-      // Update positions and trigger sibling reactions via positions.modify
-      if (positions.value[draggableItemKey.value] !== positions.value[draggableItemKey.value]) {
+      let newPos = 0;
+      let runningY = 0;
+      let found = false;
+
+      for (const item of sortedItems) {
+        const itemCenterY = runningY + item.height / 2;
+        if (currentAbsoluteY < itemCenterY) {
+          found = true;
+          break;
+        }
+        runningY += item.height;
+        newPos++;
+      }
+
+      const newPosition = Math.max(0, Math.min(listLength - 1, newPos));
+
+      draggedItemPosition.value = newPosition;
+
+      // Update positions and snap the dragged item to the calculated position
+      if (newPosition !== positions.value[draggableItemKey.value]) {
         positions.modify((value: any) => {
           'worklet';
 
           const oldPosition = value[draggableItemKey.value!];
-          value[draggableItemKey.value!] = positions.value[draggableItemKey.value]; // Set new position for dragged item
+          value[draggableItemKey.value!] = newPosition;
 
-          // Logic to shift all neighboring items up or down
           Object.keys(value).forEach((key) => {
-            // ... (Your existing logic for shifting neighbors)
+            if (draggableItemKey.value && key !== draggableItemKey.value) {
+              const itemPos = value[key];
+              if (newPosition > oldPosition && itemPos > oldPosition && itemPos <= newPosition) {
+                value[key] = itemPos - 1;
+              } else if (newPosition < oldPosition && itemPos < oldPosition && itemPos >= newPosition) {
+                value[key] = itemPos + 1;
+              }
+            }
           });
+
           return value;
         });
+
+        // Update target position
+        targetPosition.value = newPosition;
       }
 
-      // Calculate the required translationY offset to visually snap the dragged item
+      // Calculate the exact offset for the new position and snap to it
       let targetY = 0;
       for (const key of keys) {
-        if (positions.value[key] < positions.value[draggableItemKey.value]) {
+        if (positions.value[key] < newPosition) {
           targetY += itemHeights.value[key] || 0;
         }
       }
-      const snapOffset = targetY - initialItemOffset.value;
+      const snapOffset = targetY - initialLayoutOffset.value;
 
-      // Apply the visual snap using the high-performance spring animation
+      // Snap to the calculated position with a quick spring
       translateY.value = withSpring(snapOffset, {
         damping: 700,
         stiffness: 1400,
@@ -230,14 +274,17 @@ function DraggableItem<T extends TItem>({
     .onEnd(() => {
       if (!draggableItemKey.value) return;
 
-      scheduleOnRN(stopAutoScroll); // Stop scrolling
+      // Stop auto-scrolling
+      autoScrollDirection.value = 'stop';
+      scheduleOnRN(stopAutoScroll);
+
       const finalPosition = positions.value[draggableItemKey.value];
 
       isDraggingShared.value = false;
-      scheduleOnRN(setIsDragging, false); // Update JS state
+      scheduleOnRN(setIsDragging, false);
 
       if (onDragEnd) {
-        scheduleOnRN(onDragEnd, initialIndex.value, finalPosition); // Final callback to consumer
+        scheduleOnRN(onDragEnd, initialIndex.value, finalPosition);
       }
     })
     .activateAfterLongPress(200);
@@ -245,11 +292,21 @@ function DraggableItem<T extends TItem>({
   const animatedStyle = useAnimatedStyle(() => {
     return {
       transform: [
-        { translateY: translateY.value },
-        { scale: withSpring(isDraggingShared.value ? 1.05 : 1, { damping: 700, stiffness: 1400 }) },
+        {
+          translateY: translateY.value,
+        },
+        {
+          scale: withSpring(isDraggingShared.value ? 1.05 : 1, {
+            damping: 700,
+            stiffness: 1400,
+          }),
+        },
       ],
       zIndex: isDraggingShared.value ? 1000 : 0,
-      opacity: withSpring(isDraggingShared.value ? 0.95 : 1, { damping: 700, stiffness: 1400 }),
+      opacity: withSpring(isDraggingShared.value ? 0.95 : 1, {
+        damping: 700,
+        stiffness: 1400,
+      }),
     };
   });
 
@@ -266,6 +323,7 @@ function DraggableItem<T extends TItem>({
     </Animated.View>
   );
 }
+
 
 const styles = StyleSheet.create({
   itemContainer: {

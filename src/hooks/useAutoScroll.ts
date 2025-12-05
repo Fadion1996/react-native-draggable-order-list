@@ -1,7 +1,5 @@
-// /src/hooks/useAutoScroll.ts
-
-import { useCallback, useEffect, useRef } from 'react';
-import { SharedValue, useAnimatedRef } from 'react-native-reanimated';
+import { useCallback, useEffect, useRef, RefObject } from 'react';
+import { SharedValue } from 'react-native-reanimated';
 import { TAutoScrollDirection } from '../types';
 
 /**
@@ -12,7 +10,7 @@ import { TAutoScrollDirection } from '../types';
  * as Reanimated's scroll commands need to be invoked from the JS side.
  */
 export const useAutoScroll = (
-  animatedRef: React.MutableRefObject<any>,
+  animatedRef: RefObject<any>,
   scrollY: SharedValue<number>,
   contentHeight: SharedValue<number>,
   containerHeight: SharedValue<number>,
