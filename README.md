@@ -1,8 +1,5 @@
 # react-native-draggable-order-list
 🚀 A truly flicker-free, high-performance Draggable FlatList for React Native. Built with Reanimated 4 &amp; Worklets for native UI thread speed. ⚡
-# 🚀 react-native-draggable-order-list
-
-A **flicker-free**, high-performance Draggable FlatList for React Native, built with **React Native Reanimated** and **Worklets** to execute all animations and drag logic entirely on the **Native UI Thread**.
 
 | NPM Downloads | GitHub Stars | License |
 | :--- | :--- | :--- |
