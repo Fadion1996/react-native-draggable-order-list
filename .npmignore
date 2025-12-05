@@ -1,0 +1,5 @@
+# .npmignore
+# Exclude folders used for local development/testing
+/node_modules
+/example
+/temp
